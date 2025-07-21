@@ -8,9 +8,10 @@ MODEL_PATH="./models/model_epoch_30.pt"
 DATA_PATH="./Datasets/amazon/test.pkl"
 OUTPUT_PATH="./results/predictions_results_custom.csv"
 NUM_EVENT_TYPES=17
-EMBED_DIM=64
-HIDDEN_DIM=128
-BATCH_SIZE=32
+EMBED_DIM=32
+HIDDEN_DIM=64
+BATCH_SIZE=256 #32
+NUM_LAYERS=2
 MIN_SEQ_LENGTH=2  # Minimum sequence length to process
 
 # Verify environment
