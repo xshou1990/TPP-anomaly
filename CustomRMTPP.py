@@ -4,11 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class JJJ_RMTPP(nn.Module):
-    def __init__(self, num_event_types, embed_dim, hidden_dim):
+    def __init__(self, num_event_types, embed_dim, hidden_dim, num_layers=1):
         super(JJJ_RMTPP, self).__init__()
         self.num_event_types = num_event_types
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
 
         # Event type embedding with padding_idx=0
         self.type_embed = nn.Embedding(num_event_types, embed_dim, padding_idx=0)
@@ -19,9 +20,10 @@ class JJJ_RMTPP(nn.Module):
             nn.ReLU()
         )
 
-        # Use GRU instead of RNN for better gradient flow
+        # Use GRU with configurable number of layers
         self.rnn = nn.GRU(input_size=embed_dim * 2,
                           hidden_size=hidden_dim,
+                          num_layers=num_layers,
                           batch_first=True)
 
         # Intensity parameters
@@ -193,7 +195,6 @@ class JJJ_RMTPP(nn.Module):
         device = next(self.parameters()).device  # Get model's device
 
         for seq_id, (raw_times, raw_types) in enumerate(sequences):
-
             # Convert to tensors and move to model's device
             times = torch.tensor(raw_times, dtype=torch.float32, device=device)
             types = torch.tensor(raw_types, dtype=torch.long, device=device)
