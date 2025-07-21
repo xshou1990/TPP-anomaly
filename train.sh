@@ -11,7 +11,8 @@ eval "$(conda shell.bash hook)"
 EMBED_DIM=32 #64 for best time prediction
 HIDDEN_DIM=64 #128 for best time prediction
 BATCH_SIZE=256 #32 for best time prediction
-EPOCHS=30 
+EPOCHS=30
+NUM_LAYERS=2 
 LEARNING_RATE=0.001
 DATA_PATH="./Datasets/amazon/"
 SAVE_DIR="./models"
@@ -56,6 +57,7 @@ echo "---------------------------------"
 echo "Embed dim:   ${EMBED_DIM}"
 echo "Hidden dim:  ${HIDDEN_DIM}"
 echo "Batch size:  ${BATCH_SIZE}"
+echo "Num layers:  ${NUM_LAYERS}"
 echo "Epochs:      ${EPOCHS}"
 echo "LR:          ${LEARNING_RATE}"
 echo "Data path:   ${DATA_PATH}"
@@ -66,6 +68,7 @@ python train.py \
     --embed_dim "${EMBED_DIM}" \
     --hidden_dim "${HIDDEN_DIM}" \
     --batch_size "${BATCH_SIZE}" \
+    --num_layers "${NUM_LAYERS}" \
     --epochs "${EPOCHS}" \
     --learning_rate "${LEARNING_RATE}" \
     --data_path "${DATA_PATH}" \
