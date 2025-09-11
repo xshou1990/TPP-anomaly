@@ -3,19 +3,35 @@
 # Initialize conda
 eval "$(conda shell.bash hook)"
 
-# This script runs the RMTPP training with proper environment handling
+# --------------------------
+# Load Configuration
+# --------------------------
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+CONFIG_PATH="$SCRIPT_DIR/config.sh"
 
-# --------------------------
-# Configuration Section
-# --------------------------
-EMBED_DIM=32 #64 for best time prediction
-HIDDEN_DIM=64 #128 for best time prediction
-BATCH_SIZE=256 #32 for best time prediction
-EPOCHS=30
-NUM_LAYERS=2 
-LEARNING_RATE=0.001
-DATA_PATH="./Datasets/amazon/"
-SAVE_DIR="./models"
+if [ -f "$CONFIG_PATH" ]; then
+    echo "Loading configuration from $CONFIG_PATH"
+    source "$CONFIG_PATH"
+else
+    echo "Warning: config.sh not found. Using default values."
+fi
+
+# Set default values if not defined
+export MODEL_EMBED_DIM=${MODEL_EMBED_DIM:-32}
+export MODEL_HIDDEN_DIM=${MODEL_HIDDEN_DIM:-16}
+export MODEL_TIME_EMBED_SIZE=${MODEL_TIME_EMBED_SIZE:-16}
+export MODEL_NUM_LAYERS=${MODEL_NUM_LAYERS:-2}
+export MODEL_NUM_HEADS=${MODEL_NUM_HEADS:-2}
+export MODEL_MC_SAMPLES=${MODEL_MC_SAMPLES:-20}
+export MODEL_INTEGRAL_SAMPLES=${MODEL_INTEGRAL_SAMPLES:-20}
+export BATCH_SIZE=${BATCH_SIZE:-256}
+export EPOCHS=${EPOCHS:-200}
+export LEARNING_RATE=${LEARNING_RATE:-0.001}
+export PATIENCE_COUNTER=${PATIENCE_COUNTER:-5}
+export DATA_PATH=${DATA_PATH:-"./Datasets/taxi/"}
+export MODEL_DIR=${MODEL_DIR:-"./models"}
+export MODEL_FILE=${MODEL_FILE:-"rmtpp_taxi_best.pt"}
+export SEED=${SEED:-2019}
 
 # --------------------------
 # Environment Verification
@@ -44,8 +60,8 @@ except ImportError as e:
 # Directory Preparation
 # --------------------------
 echo "Preparing directories..."
-mkdir -p "${SAVE_DIR}" || {
-    echo "Error: Failed to create save directory ${SAVE_DIR}"
+mkdir -p "$MODEL_DIR" || {
+    echo "Error: Failed to create model directory $MODEL_DIR"
     exit 1
 }
 
@@ -54,32 +70,45 @@ mkdir -p "${SAVE_DIR}" || {
 # --------------------------
 echo "Starting training with parameters:"
 echo "---------------------------------"
-echo "Embed dim:   ${EMBED_DIM}"
-echo "Hidden dim:  ${HIDDEN_DIM}"
-echo "Batch size:  ${BATCH_SIZE}"
-echo "Num layers:  ${NUM_LAYERS}"
-echo "Epochs:      ${EPOCHS}"
-echo "LR:          ${LEARNING_RATE}"
-echo "Data path:   ${DATA_PATH}"
-echo "Save dir:    ${SAVE_DIR}"
+echo "Embed dim:      $MODEL_EMBED_DIM"
+echo "Hidden dim:     $MODEL_HIDDEN_DIM"
+echo "Time embed:     $MODEL_TIME_EMBED_SIZE"
+echo "Num layers:     $MODEL_NUM_LAYERS"
+echo "Num heads:      $MODEL_NUM_HEADS"
+echo "MC samples:     $MODEL_MC_SAMPLES"
+echo "Integral samples: $MODEL_INTEGRAL_SAMPLES"
+echo "Batch size:     $BATCH_SIZE"
+echo "Epochs:        $EPOCHS"
+echo "Learning rate: $LEARNING_RATE"
+echo "Patience:      $PATIENCE_COUNTER"
+echo "Data path:     $DATA_PATH"
+echo "Save dir:      $MODEL_DIR"
+echo "Model file:    $MODEL_FILE"
+echo "Seed:         $SEED"
 echo "---------------------------------"
 
+# Run training with all parameters from environment
 python train.py \
-    --embed_dim "${EMBED_DIM}" \
-    --hidden_dim "${HIDDEN_DIM}" \
-    --batch_size "${BATCH_SIZE}" \
-    --num_layers "${NUM_LAYERS}" \
-    --epochs "${EPOCHS}" \
-    --learning_rate "${LEARNING_RATE}" \
-    --data_path "${DATA_PATH}" \
-    --save_dir "${SAVE_DIR}"
+    --embed_dim "$MODEL_EMBED_DIM" \
+    --hidden_dim "$MODEL_HIDDEN_DIM" \
+    --batch_size "$BATCH_SIZE" \
+    --num_layers "$MODEL_NUM_LAYERS" \
+    --epochs "$EPOCHS" \
+    --learning_rate "$LEARNING_RATE" \
+    --time_embed_size "$MODEL_TIME_EMBED_SIZE" \
+    --num_heads "$MODEL_NUM_HEADS" \
+    --mc_samples "$MODEL_MC_SAMPLES" \
+    --integral_samples "$MODEL_INTEGRAL_SAMPLES" \
+    --data_path "$DATA_PATH" \
+    --save_dir "$MODEL_DIR" \
+    --seed "$SEED"
 
 # --------------------------
 # Completion Handling
 # --------------------------
 if [ $? -eq 0 ]; then
     echo -e "\nTraining completed successfully!"
-    echo "Model checkpoints saved to: ${SAVE_DIR}"
+    echo "Model saved to: $MODEL_DIR/$MODEL_FILE"
 else
     echo -e "\nTraining failed with errors!" >&2
     exit 1

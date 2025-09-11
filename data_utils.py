@@ -16,26 +16,6 @@ def load_model(model_path, num_event_types, embed_dim, hidden_dim, device):
     model.eval()
     return model
 
-# Improved dataset class with caching
-class AmazonDataset(Dataset):
-    def __init__(self, sequences):
-        self.sequences = []
-        for times, types in sequences:
-            # Precompute dts during initialization
-            dts = np.zeros_like(times)
-            dts[1:] = times[1:] - times[:-1]
-            self.sequences.append((times, dts, types))
-
-    def __len__(self):
-        return len(self.sequences)
-
-    def __getitem__(self, idx):
-        times, dts, types = self.sequences[idx]
-        return (
-            torch.tensor(times, dtype=torch.float32),
-            torch.tensor(dts, dtype=torch.float32),
-            torch.tensor(types, dtype=torch.long)
-        )
 
 # Optimized collate function
 def collate_fn(batch):
@@ -129,8 +109,8 @@ def process_prediction_data(pickle_data):
 
     # Extract metrics
     metrics = {
-        'accuracy': float(pickle_data['acc']),
-        'rmse': float(pickle_data['rmse'])
+        'accuracy': pickle_data['acc'],
+        'rmse': pickle_data['rmse']
     }
 
     # Iterate through each sequence in predictions and labels
