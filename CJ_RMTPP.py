@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch_thinning import EventSampler
 import math
 
+
 class CJ_RMTPP(nn.Module):
     def __init__(self, num_event_types, embed_dim=32, hidden_dim=64,
                  time_embed_size=16, num_layers=1, num_heads=2,
@@ -11,7 +12,7 @@ class CJ_RMTPP(nn.Module):
                  use_padding=False, thinning_num_sample=1, thinning_num_exp=500,
                  thinning_over_sample_rate=5, thinning_num_samples_boundary=5,
                  thinning_dtime_max=5, thinning_patience_counter=5):
-        
+
         super(CJ_RMTPP, self).__init__()
         self.num_event_types = num_event_types
         self.embed_dim = embed_dim
@@ -54,7 +55,7 @@ class CJ_RMTPP(nn.Module):
 
         # Changed from GRU to simple RNN
         self.rnn = nn.RNN(
-            input_size=hidden_dim, 
+            input_size=hidden_dim,
             hidden_size=hidden_dim,
             num_layers=1,
             batch_first=True,
@@ -73,7 +74,7 @@ class CJ_RMTPP(nn.Module):
             self.dropout,
             nn.Linear(hidden_dim, num_event_types)
         )
-        
+
         # Linear layer for hidden_to_intensity_logits
         self.hidden_to_intensity_logits = nn.Linear(hidden_dim, num_event_types)
 
@@ -91,13 +92,13 @@ class CJ_RMTPP(nn.Module):
             patience_counter=self.thinning_patience_counter,
             device=device
         )
-    
-    def intensity_fn_wrapper(self, time_seq, time_delta_seq, event_seq, dtime_samples, 
-                            max_steps=None, compute_last_step_only=False):
+
+    def intensity_fn_wrapper(self, time_seq, time_delta_seq, event_seq, dtime_samples,
+                             max_steps=None, compute_last_step_only=False):
         """
         Wrapper function to compute intensities for the thinning sampler.
         This converts the sampler's interface to match your model's intensity computation.
-        
+
         Args:
             time_seq: [batch_size, seq_len], absolute times
             time_delta_seq: [batch_size, seq_len], time intervals
@@ -105,16 +106,16 @@ class CJ_RMTPP(nn.Module):
             dtime_samples: [batch_size, seq_len, num_samples], time deltas to sample at
             max_steps: maximum sequence length to process
             compute_last_step_only: whether to compute only the last step
-            
+
         Returns:
             intensities: [batch_size, seq_len, num_samples, num_event_types]
         """
         batch_size, seq_len, num_samples = dtime_samples.shape
-        
+
         # Reshape for parallel computation
         # [batch_size * seq_len * num_samples]
         dtime_samples_flat = dtime_samples.reshape(-1)
-        
+
         # Repeat hidden states for each sample
         if compute_last_step_only:
             # Use only the last hidden state
@@ -126,24 +127,24 @@ class CJ_RMTPP(nn.Module):
             hiddens = self.forward(time_seq, time_delta_seq, event_seq)
             # [batch_size, seq_len, hidden_dim] -> [batch_size * seq_len * num_samples, hidden_dim]
             hidden_repeated = hiddens.unsqueeze(2).repeat(1, 1, num_samples, 1).reshape(-1, self.hidden_dim)
-        
+
         # Compute intensities for all samples
         # [batch_size * seq_len * num_samples, num_event_types]
         intensities_flat = self.compute_intensity_from_hidden(hidden_repeated, dtime_samples_flat)
-        
+
         # Reshape back to [batch_size, seq_len, num_samples, num_event_types]
         intensities = intensities_flat.reshape(batch_size, seq_len, num_samples, self.num_event_types)
-        
+
         return intensities
 
     def compute_intensity_from_hidden(self, hiddens, dtimes):
         """
         Compute intensity from hidden states and time deltas.
-        
+
         Args:
             hiddens: [*, hidden_dim] hidden states
             dtimes: [*] time deltas
-            
+
         Returns:
             intensities: [*, num_event_types]
         """
@@ -152,17 +153,17 @@ class CJ_RMTPP(nn.Module):
             hiddens = hiddens.unsqueeze(0)
         if dtimes.dim() == 0:
             dtimes = dtimes.unsqueeze(0)
-        
+
         # Expand dtimes to match hidden dimensions if needed
         if hiddens.shape[0] != dtimes.shape[0]:
             dtimes = dtimes.expand(hiddens.shape[0])
-        
+
         # Compute intensity using your existing method
         past_influence = self.hidden_to_intensity_logits(hiddens)
         exponent = past_influence + self.w_t * dtimes.unsqueeze(-1) + self.b_t
         exponent = torch.clamp(exponent, min=-50, max=50)
         intensity = torch.exp(exponent)
-        
+
         return intensity
 
     def get_last_hidden_state(self, time_seq, time_delta_seq, event_seq):
@@ -175,15 +176,15 @@ class CJ_RMTPP(nn.Module):
             mask = (event_seq != 0)
         else:
             mask = (event_seq >= 1)
-        
+
         # Get indices of last events
         seq_lens = mask.sum(dim=1)
         last_indices = seq_lens - 1
-        
+
         # Gather last hidden states
         batch_indices = torch.arange(hiddens.size(0), device=hiddens.device)
         last_hidden = hiddens[batch_indices, last_indices]
-        
+
         return last_hidden.unsqueeze(1)  # [batch_size, 1, hidden_dim]
 
     def predict_with_thinning(self, dts, types, num_sample=10, look_ahead=10):
@@ -191,23 +192,23 @@ class CJ_RMTPP(nn.Module):
         # Initialize sampler if not already done
         if not hasattr(self, 'thinning_sampler'):
             self.init_thinning_sampler(dts.device)
-        
+
         with torch.no_grad():
             # Convert dts to absolute times
             times = torch.cumsum(dts, dim=1)
-            
+
             # Get sequence lengths
             if self.use_padding:
                 mask = (types != 0)
             else:
                 mask = (types >= 1)
             seq_lens = mask.sum(dim=1)
-            
+
             # Prepare inputs for thinning
             time_seq = times
             time_delta_seq = dts
             event_seq = types
-            
+
             # Compute next event times using thinning
             next_times, weights = self.thinning_sampler.draw_next_time_one_step(
                 time_seq=time_seq,
@@ -217,26 +218,26 @@ class CJ_RMTPP(nn.Module):
                 intensity_fn=self.intensity_fn_wrapper,
                 compute_last_step_only=True  # Only predict from last event
             )
-            
+
             # next_times: [batch_size, seq_len, num_sample]
             # We only want predictions from the last event
             batch_size = dts.size(0)
             batch_indices = torch.arange(batch_size, device=dts.device)
             last_event_indices = seq_lens - 1
-            
+
             # Get samples for last event
             last_event_samples = next_times[batch_indices, last_event_indices]  # [batch_size, num_sample]
-            
+
             # Weighted average of samples
             pred_dtimes = (last_event_samples * weights[batch_indices, last_event_indices]).sum(dim=1)
-            
+
             # Predict event type at the sampled time
             last_hidden = self.get_last_hidden_state(time_seq, time_delta_seq, event_seq)
-            
+
             # Use average predicted time for type prediction
             type_logits = self.type_output(last_hidden.squeeze(1))
             pred_types = torch.argmax(type_logits, dim=-1)
-            
+
             return pred_types, pred_dtimes
 
     def _init_weights(self):
@@ -274,6 +275,32 @@ class CJ_RMTPP(nn.Module):
             packed_output, batch_first=True)
 
         return hiddens
+
+    def compute_intensity(self, hiddens, dts, types=None):
+        """
+        Compute intensity with proper dimension handling
+        Args:
+            hiddens: [batch_size, seq_len, hidden_dim]
+            dts: [batch_size, seq_len]
+            types: [batch_size, seq_len] or None
+        """
+        # Compute base intensity
+        past_influence = self.hidden_to_intensity_logits(hiddens)  # Changed to use the correct layer
+        exponent = past_influence + self.w_t * dts.unsqueeze(-1) + self.b_t
+        exponent = torch.clamp(exponent, min=-50, max=50)
+        intensity = torch.exp(exponent)  # [batch_size, seq_len, num_event_types]
+
+        if types is not None:
+            # Ensure types has correct shape for gathering
+            if types.dim() == 2:
+                types = types.unsqueeze(-1)  # [batch_size, seq_len, 1]
+            elif types.dim() == 1:
+                types = types.unsqueeze(-1).unsqueeze(-1)  # [batch_size, 1, 1]
+
+            # Gather intensities for actual event types
+            true_intensity = torch.gather(intensity, -1, types).squeeze(-1)
+            return intensity, true_intensity
+        return intensity
 
     def compute_loss(self, dts, types, mask=None):
         """Handle both padded and non-padded sequences"""
@@ -331,9 +358,9 @@ class CJ_RMTPP(nn.Module):
 
             # Fixed intensity calculation
             intensity_input = self.hidden_to_intensity_logits(last_hidden)
-            intensity = torch.exp(intensity_input.gather(1, most_probable.unsqueeze(1)) + 
-                                 w_selected.unsqueeze(1) * 0.1 +  # Small dt assumption
-                                 b_selected.unsqueeze(1))
+            intensity = torch.exp(intensity_input.gather(1, most_probable.unsqueeze(1)) +
+                                  w_selected.unsqueeze(1) * 0.1 +  # Small dt assumption
+                                  b_selected.unsqueeze(1))
             pred_times = dts[:, -1] + 1.0 / (intensity.squeeze() + 1e-7)
 
             return pred_types, pred_times
@@ -385,10 +412,10 @@ class CJ_RMTPP(nn.Module):
             # Acceptance/rejection
             uniforms = torch.rand_like(candidate_times)
             accepted = uniforms * max_intensity <= intensities
-            
+
             # Handle case where no samples are accepted
             pred_times = torch.zeros(dts.size(0), device=dts.device)
-            
+
             for i in range(dts.size(0)):
                 accepted_times_i = candidate_times[i][accepted[i]]
                 if accepted_times_i.numel() > 0:
@@ -398,23 +425,23 @@ class CJ_RMTPP(nn.Module):
                     # Fallback: use simple prediction if no samples accepted
                     # Compute intensity for this sequence
                     intensity_input = self.hidden_to_intensity_logits(last_hidden[i])  # [1, num_event_types]
-                    
+
                     # Use the most probable event type for fallback
                     type_logits_i = self.type_output(last_hidden[i])  # [1, num_event_types]
                     most_probable_i = torch.argmax(type_logits_i)  # [1]
-                    
+
                     # Gather the correct intensity value
                     # intensity_input shape: [1, num_event_types]
                     # most_probable_i shape: [1] -> needs to be [1, 1] for gather
                     intensity_value = intensity_input.gather(1, most_probable_i.unsqueeze(0).unsqueeze(1))  # [1, 1]
-                    
+
                     w_selected_i = self.w_t.squeeze(0).gather(0, most_probable_i)  # [1]
                     b_selected_i = self.b_t.squeeze(0).gather(0, most_probable_i)  # [1]
-                    
+
                     # Compute expected time based on intensity
-                    intensity_i = torch.exp(intensity_value.squeeze() + 
-                                        w_selected_i * 0.1 +  # Small dt assumption
-                                        b_selected_i)
+                    intensity_i = torch.exp(intensity_value.squeeze() +
+                                            w_selected_i * 0.1 +  # Small dt assumption
+                                            b_selected_i)
                     pred_times[i] = 1.0 / (intensity_i + 1e-7)
 
             # Predict type at the selected time
