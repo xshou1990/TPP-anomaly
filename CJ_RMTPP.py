@@ -365,30 +365,6 @@ class CJ_RMTPP(nn.Module):
 
             return pred_types, pred_times
 
-    @staticmethod
-    def get_logits_at_last_step(logits, batch_non_pad_mask, sample_len=None):
-        """Retrieve the hidden states of last non-pad events.
-
-        Args:
-            logits (tensor): [batch_size, seq_len, hidden_dim], a sequence of logits
-            batch_non_pad_mask (tensor): [batch_size, seq_len], a sequence of masks
-            sample_len (tensor): default None, use batch_non_pad_mask to find out the last non-mask position
-
-        ref: https://medium.com/analytics-vidhya/understanding-indexing-with-pytorch-gather-33717a84ebc4
-
-        Returns:
-            tensor: retrieve the logits of EOS event
-        """
-        seq_len = batch_non_pad_mask.sum(dim=1)
-        select_index = seq_len - 1 if sample_len is None else seq_len - 1 - sample_len
-        # [batch_size, hidden_dim]
-        select_index = select_index.unsqueeze(1).repeat(1, logits.size(-1))
-        # [batch_size, 1, hidden_dim]
-        select_index = select_index.unsqueeze(1)
-        # [batch_size, hidden_dim]
-        last_logits = torch.gather(logits, dim=1, index=select_index).squeeze(1)
-        return last_logits
-
     def predict_with_thinning(self, dts, types, num_sample=10, look_ahead=10):
         """Predict next event using thinning algorithm"""
         with torch.no_grad():
